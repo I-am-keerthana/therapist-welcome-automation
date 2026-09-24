@@ -1,0 +1,15 @@
+{
+  "name": "therapist-welcome-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Google Apps Script automation that sends a welcome email to each newly hired therapist from a shared hiring spreadsheet — with idempotency, validation, and silent-failure monitoring.",
+  "scripts": {
+    "test": "node --test tests/core.test.js tests/appsscript.test.js",
+    "build:demo": "node scripts/build-demo.js",
+    "check:demo": "node scripts/build-demo.js --check"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

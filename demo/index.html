@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Therapist Welcome Automation</title>
+  <meta name="description" content="Practical exercise: automating the new-therapist welcome email from a shared hiring spreadsheet — design, failure modes, monitoring, and a live simulator running the production decision engine.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%231f6f5c'/><path d='M7 11l9 6 9-6M7 11h18v11H7z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div>
+        <p class="eyebrow">Practical exercise · Automation &amp; Systems Builder</p>
+        <h1>Automating the new-therapist welcome email</h1>
+        <p class="lede">A shared hiring spreadsheet that several people edit is the trigger. The email has to go out once, to the right person, at the right time. If the automation stops working, someone has to find out that day, not weeks later.</p>
+        <div class="links">
+          <a class="btn primary" href="https://github.com/I-am-keerthana/therapist-welcome-automation" target="_blank" rel="noreferrer">View the code on GitHub</a>
+          <a class="btn" href="#simulator">Try the live simulator</a>
+          <a class="btn ghost" href="https://keerthana-porfolio.netlify.app/" target="_blank" rel="noreferrer">Portfolio</a>
+        </div>
+      </div>
+      <dl class="facts">
+        <div><dt>Stack</dt><dd>Google Sheets + Apps Script + Gmail</dd></div>
+        <div><dt>New vendors</dt><dd>None (optional free heartbeat monitor)</dd></div>
+        <div><dt>Tests</dt><dd>37 automated, run in CI</dd></div>
+        <div><dt>Author</dt><dd>Keerthana B. E. Balamurugan</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="answer" aria-labelledby="answer-h">
+      <h2 id="answer-h">The short answer</h2>
+      <div class="cards">
+        <article class="card">
+          <span class="num">1</span>
+          <h3>What I would use</h3>
+          <p><strong>Google Apps Script inside the existing hiring sheet</strong>, sending from a shared Gmail alias (e.g. onboarding@). The team already works in Google Workspace, so there's no new vendor, login or monthly fee, and the data stays inside your Workspace account.</p>
+          <ul>
+            <li>A <strong>timed scan every 15 minutes</strong>, not an on-edit trigger. On-edit fires while someone is still typing, and it misses pasted or imported rows. A timed scan catches anything a previous run missed.</li>
+            <li>Rows are matched by a <strong>Candidate ID</strong>, not by row number or name, so sorting and filtering are safe.</li>
+            <li>A <strong>30-minute undo window</strong> after someone marks a row "Hired".</li>
+            <li>A <strong>protected Welcome Log tab</strong> records every send, so no hire is ever emailed twice.</li>
+          </ul>
+          <p class="muted small">Zapier or Make would also work for the happy path. I chose Apps Script because the hard parts here are idempotency, validation and monitoring, and those need real logic and a place to keep state.</p>
+        </article>
+        <article class="card">
+          <span class="num">2</span>
+          <h3>What could go wrong</h3>
+          <ul>
+            <li><strong>Duplicate emails</strong> after a re-sort, a re-edit, or a run that dies halfway through a send</li>
+            <li><strong>Sent too early</strong>: "Hired" chosen by mistake, or the email typed wrong</li>
+            <li><strong>Column renamed or moved</strong>, so the script reads the wrong field</li>
+            <li><strong>Status typos</strong>: "Offer Accepted" or "hired " never match</li>
+            <li><strong>Trigger dies</strong> when its owner leaves or their access is revoked</li>
+            <li>Gmail <strong>quota or outage</strong>, or a broken template that sends "Hi {{firstName}}"</li>
+            <li>Old hires <strong>backfilled</strong> into the sheet all get welcomed at once</li>
+            <li><strong>PHI</strong> ending up in an email to a personal inbox</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="num">3</span>
+          <h3>How I'd know it silently stopped</h3>
+          <p>A script can't report that it isn't running, so the monitoring has four independent layers:</p>
+          <ol>
+            <li><strong>External heartbeat.</strong> Every successful run pings a monitor outside Google (e.g. Healthchecks.io). If the pings stop for 30 minutes, it emails or texts ops.</li>
+            <li><strong>Loud failures.</strong> Any error stops the run, sends nothing, and emails ops. Repeat alerts are suppressed so people don't learn to ignore them.</li>
+            <li><strong>Outcome check, not just uptime.</strong> A daily digest lists every hire starting in the next 14 days who hasn't been welcomed. This catches the quietest failure: the script runs fine, but nobody's row qualifies.</li>
+            <li><strong>The daily digest always arrives</strong>, even when everything is fine. If it stops arriving, that silence is itself the alert.</li>
+          </ol>
+        </article>
+      </div>
+    </section>
+
+    <section aria-labelledby="arch-h">
+      <h2 id="arch-h">How it fits together</h2>
+      <figure class="diagram">
+        <svg viewBox="0 0 1000 380" role="img" aria-labelledby="diag-title diag-desc">
+          <title id="diag-title">Architecture diagram</title>
+          <desc id="diag-desc">Recruiters edit the Hiring Tracker sheet. Every 15 minutes Apps Script reads it, validates rows, holds new hires for a 30 minute window, sends via Gmail with a two-phase log, and records results in a protected Welcome Log. Each run pings an external heartbeat monitor; a daily digest reconciles upcoming start dates against sent emails.</desc>
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L10 5L0 10z" class="arrowhead"/>
+            </marker>
+          </defs>
+          <g class="node people"><rect x="20" y="40" width="180" height="84" rx="12"/><text x="110" y="74">Recruiters &amp;</text><text x="110" y="96">hiring managers</text></g>
+          <g class="node sheet"><rect x="20" y="170" width="180" height="96" rx="12"/><text x="110" y="204" class="b">Hiring Tracker</text><text x="110" y="226">Google Sheet</text><text x="110" y="246" class="s">Status dropdown</text></g>
+          <path d="M110 124V166" class="edge" marker-end="url(#arrow)"/>
+          <text x="118" y="150" class="lbl" text-anchor="start">edit</text>
+
+          <g class="node core"><rect x="270" y="130" width="380" height="176" rx="14"/>
+            <text x="460" y="160" class="b">Apps Script · every 15 min</text>
+            <g class="step"><rect x="290" y="178" width="106" height="52" rx="8"/><text x="343" y="200">Read by</text><text x="343" y="218">header name</text></g>
+            <g class="step"><rect x="407" y="178" width="106" height="52" rx="8"/><text x="460" y="200">Validate</text><text x="460" y="218">+ 30-min hold</text></g>
+            <g class="step"><rect x="524" y="178" width="106" height="52" rx="8"/><text x="577" y="200">Two-phase</text><text x="577" y="218">send</text></g>
+            <path d="M396 204H405" class="edge thin" marker-end="url(#arrow)"/>
+            <path d="M513 204H522" class="edge thin" marker-end="url(#arrow)"/>
+            <text x="460" y="262" class="s">Lock · quota check · retries (max 3)</text>
+            <text x="460" y="282" class="s">Same Core.js is tested in CI and runs in this demo</text>
+          </g>
+          <path d="M200 218H266" class="edge" marker-end="url(#arrow)"/>
+          <text x="233" y="208" class="lbl">read</text>
+
+          <g class="node mail"><rect x="720" y="40" width="250" height="80" rx="12"/><text x="845" y="72" class="b">Gmail (shared alias)</text><text x="845" y="96">→ new hire's inbox</text></g>
+          <path d="M600 178C640 120 680 90 716 84" class="edge" marker-end="url(#arrow)"/>
+
+          <g class="node log"><rect x="720" y="160" width="250" height="80" rx="12"/><text x="845" y="192" class="b">Welcome Log (protected)</text><text x="845" y="216">one row per Candidate ID</text></g>
+          <path d="M650 206H716" class="edge" marker-end="url(#arrow)"/>
+
+          <g class="node mon"><rect x="720" y="280" width="250" height="80" rx="12"/><text x="845" y="312" class="b">External heartbeat</text><text x="845" y="336">no ping in 30 min → alert</text></g>
+          <path d="M600 306C640 330 680 330 716 322" class="edge dash" marker-end="url(#arrow)"/>
+          <text x="660" y="352" class="lbl">ping</text>
+
+          <g class="node digest"><rect x="270" y="326" width="380" height="44" rx="10"/><text x="460" y="353">Daily 8am digest: watchdog + "starting soon, not welcomed"</text></g>
+        </svg>
+      </figure>
+    </section>
+
+    <section id="simulator" aria-labelledby="sim-h">
+      <div class="sim-head">
+        <div>
+          <h2 id="sim-h">Live simulator</h2>
+          <p class="muted">Edit the sheet the way a busy team would. Press <strong>Run trigger</strong> to advance the clock 15 minutes and run the automation. The decisions come from <code>Core.js</code>, the same file deployed to Apps Script. Sample data only; nothing is sent.</p>
+        </div>
+        <div class="clock" aria-live="polite"><span class="muted small">Simulated time</span><strong id="clock"></strong></div>
+      </div>
+
+      <div class="toolbar" role="toolbar" aria-label="Simulator controls">
+        <button class="btn primary" id="run">Run trigger (+15 min)</button>
+        <button class="btn" id="hour">Skip 1 hour</button>
+        <button class="btn" id="digest">Send daily digest</button>
+        <button class="btn" id="add">Add a hire</button>
+        <button class="btn ghost" id="reset">Reset</button>
+      </div>
+
+      <details class="chaos" open>
+        <summary>Break something <span class="muted small">(inject a failure, then run the trigger)</span></summary>
+        <div class="chaos-grid">
+          <label><input type="checkbox" id="f-rename"> Rename the <em>Personal Email</em> column to "Contact"</label>
+          <label><input type="checkbox" id="f-trigger"> Trigger stops: the script's owner left the company</label>
+          <label><input type="checkbox" id="f-gmail"> Gmail outage: sends throw an error</label>
+          <label><input type="checkbox" id="f-crash"> Next send: run is killed after Gmail accepts the message</label>
+        </div>
+      </details>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Hiring Tracker <span class="tag">shared, many editors</span></h3></div>
+        <div class="table-scroll">
+          <table class="grid" id="sheet"></table>
+        </div>
+      </div>
+
+      <div class="sim-grid">
+        <div class="panel">
+          <div class="panel-head"><h3>Health</h3></div>
+          <div id="health" class="health"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Alerts to ops <span class="tag" id="alert-count">0</span></h3></div>
+          <ul id="alerts" class="feed"></ul>
+        </div>
+      </div>
+
+      <div class="sim-grid">
+        <div class="panel">
+          <div class="panel-head"><h3>Welcome Log <span class="tag">protected tab</span></h3></div>
+          <div class="table-scroll"><table class="grid compact" id="log"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Sent emails <span class="tag" id="outbox-count">0</span></h3></div>
+          <ul id="outbox" class="feed"></ul>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h3>Run history</h3></div>
+        <ul id="runs" class="feed runs"></ul>
+      </div>
+
+      <div class="panel hint">
+        <h3>Things to try</h3>
+        <ol>
+          <li>Run the trigger three times. Maya goes to <em>PENDING</em> first and is <em>SENT</em> after the 30-minute window.</li>
+          <li>Fix Priya's email (<code>@gmail</code> → <code>@gmail.com</code>). Her row moves from <em>BLOCKED</em> to pending.</li>
+          <li>Set Jordan to Hired, then back to Offer Sent before 30 minutes pass. The send is <em>CANCELLED</em>.</li>
+          <li>Tick <em>Trigger stops</em> and skip ahead an hour. The external heartbeat goes red.</li>
+          <li>Send the daily digest. Sam's "Offer Accepted" status gets flagged even though no run failed.</li>
+          <li>Tick <em>run is killed</em>, then set Jordan to Hired and wait out the window. The next run asks a human instead of emailing twice.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section aria-labelledby="fm-h">
+      <h2 id="fm-h">Failure modes, prevention and detection</h2>
+      <div class="table-scroll">
+        <table class="fm">
+          <thead><tr><th>What goes wrong</th><th>How the design prevents it</th><th>How we'd find out</th></tr></thead>
+          <tbody>
+            <tr><td>Same hire emailed twice</td><td>Log keyed by Candidate ID. SENT is final. The log is set to SENDING before Gmail is called, so if a run dies mid-send, a human checks it instead of the script resending.</td><td>"Needs review" alert. Message ID stored for every send.</td></tr>
+            <tr><td>"Hired" chosen by mistake, or email typo</td><td>30-minute hold. Changing the status cancels the send, and editing the email restarts the timer. Email format is validated.</td><td>Blocked-row alert with a plain-English reason.</td></tr>
+            <tr><td>Column renamed or moved</td><td>Columns are read by header name, with aliases. A missing or ambiguous column stops the run and nothing is sent.</td><td>Run-failure alert and a <code>/fail</code> ping to the external monitor.</td></tr>
+            <tr><td>Status written as "Offer Accepted" or "hired "</td><td>Status dropdown with validation. Matching ignores case and extra spaces.</td><td>Daily digest: "starting in N days, not welcomed".</td></tr>
+            <tr><td>Trigger deleted, or owner leaves</td><td>Triggers owned by a shared ops account. <code>setup()</code> can be re-run safely.</td><td>External heartbeat stops. The digest checks that the triggers still exist.</td></tr>
+            <tr><td>Gmail quota or outage</td><td>Quota checked before sending. Retries up to 3 times, then gives up and alerts.</td><td>Failure alert. The digest reports the remaining quota.</td></tr>
+            <tr><td>Broken or empty template</td><td>Any unfilled placeholder stops the send. <code>previewWelcomeEmail()</code> lets you check it first.</td><td>FAILED state plus an alert.</td></tr>
+            <tr><td>Old hires backfilled into the sheet</td><td>Start dates more than 30 days in the past are blocked.</td><td>Blocked-row alert.</td></tr>
+            <tr><td>Two runs overlap</td><td>A script lock lets only one run act at a time.</td><td>Skipped runs show up in Run History.</td></tr>
+            <tr><td>PHI leaks into the email</td><td>The sheet and the email carry only name, role, start date and supervisor. No client or clinical data.</td><td>Template reviewed in Git, so every change is visible.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="roll-h" class="two-col">
+      <div>
+        <h2 id="roll-h">Rollout</h2>
+        <ol class="steps">
+          <li><strong>Day 1.</strong> Add a Candidate ID column and the status dropdown. Run <code>setup()</code>. It creates the protected tabs, installs the triggers and sends a test alert.</li>
+          <li><strong>Week 1, dry run.</strong> <code>DRY_RUN=true</code> sends every welcome email to the ops inbox instead of the hire. Compare against the emails still being sent by hand.</li>
+          <li><strong>Go live.</strong> Run <code>clearDryRunEntries()</code> and set <code>DRY_RUN=false</code>. Keep the daily digest.</li>
+          <li><strong>Hand-over.</strong> A runbook covers every alert: what it means, what to check, and how to fix it.</li>
+        </ol>
+      </div>
+      <div>
+        <h2>Questions I'd ask first</h2>
+        <ul class="steps">
+          <li>Who owns the hiring sheet, and which statuses do people actually use today?</li>
+          <li>Should the email wait for signed paperwork or a background check, or go out at "offer accepted"?</li>
+          <li>Does each supervisor or location need its own template, or a CC?</li>
+          <li>Which inbox should replies go to, and who should get the alerts?</li>
+          <li>Does the sheet hold anything beyond HR data? If so, the email pulls only the minimum fields.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <p>Built by Keerthana B. E. Balamurugan for the Automation &amp; Systems Builder application. <a href="https://github.com/I-am-keerthana/therapist-welcome-automation" target="_blank" rel="noreferrer">Source, tests and runbook on GitHub</a> · <a href="https://github.com/I-am-keerthana" target="_blank" rel="noreferrer">GitHub</a> · <a href="https://keerthana-porfolio.netlify.app/" target="_blank" rel="noreferrer">Portfolio</a></p>
+  </footer>
+
+  <dialog id="preview">
+    <form method="dialog" class="dialog-head"><strong id="preview-subject"></strong><button class="btn ghost" aria-label="Close preview">Close</button></form>
+    <p class="muted small" id="preview-meta"></p>
+    <div id="preview-body" class="email"></div>
+  </dialog>
+
+  <script src="core.js"></script>
+  <script src="template.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

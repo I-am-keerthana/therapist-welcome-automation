@@ -1,0 +1,19 @@
+<!--
+  Welcome email template. Placeholders: {{firstName}} {{fullName}} {{role}}
+  {{supervisor}} {{startDate}} {{companyName}} {{senderName}} {{onboardingLink}}
+  An unfilled placeholder stops the send (it never goes out half-rendered).
+  Keep this email free of clinical/client information: it goes to a personal inbox.
+-->
+<div style="font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 1.55; color: #1f2933; max-width: 560px;">
+  <p>Hi {{firstName}},</p>
+  <p>Welcome to {{companyName}}! We're delighted you're joining us as a {{role}}.</p>
+  <p><strong>Your first day is {{startDate}}.</strong> Your clinical supervisor, {{supervisor}}, will reach out before then to plan your first week.</p>
+  <p>Before you start, please:</p>
+  <ol>
+    <li>Read the new-therapist guide: <a href="{{onboardingLink}}">{{onboardingLink}}</a></li>
+    <li>Watch for a separate email with your work account and HIPAA training access</li>
+    <li>Reply to this email if anything about your start date needs to change</li>
+  </ol>
+  <p>We're glad you're here.</p>
+  <p>Warmly,<br>{{senderName}}<br>{{companyName}}</p>
+</div>

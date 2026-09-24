@@ -1,0 +1,4 @@
+# Lets the repo be connected to Netlify directly. For drag-and-drop, upload the demo/ folder.
+[build]
+  publish = "demo"
+  command = "npm run check:demo"
