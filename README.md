@@ -2,7 +2,7 @@
 
 Sends a welcome email to every newly hired therapist, driven by a shared Google Sheet hiring tracker that several people edit. The goals are that every hire gets exactly one email, a mistake in the sheet can be undone, and nobody has to notice by luck that the automation stopped.
 
-**Live walkthrough and simulator:** see the Netlify link in the application, or open [`demo/index.html`](demo/index.html) locally.
+**Live walkthrough and simulator:** https://regal-chebakia-271b75.netlify.app/ (source in [`demo/`](demo/))
 **Design write-up (the exercise answer):** [`docs/DESIGN.md`](docs/DESIGN.md)
 **Operating it:** [`docs/RUNBOOK.md`](docs/RUNBOOK.md)
 
